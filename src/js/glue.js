@@ -12,6 +12,6 @@ async function send_one(item) {
 
 async function send(stuff) {
     for await (let item of stuff) {
-        await send_one(JSON.stringify(item));
+        await send_one(item);
     }
 }

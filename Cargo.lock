@@ -594,6 +594,7 @@ dependencies = [
  "hmac",
  "rand",
  "rocket",
+ "scopeguard",
  "serde",
  "serde_json",
  "sha2",

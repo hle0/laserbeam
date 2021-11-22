@@ -1,12 +1,15 @@
-use std::{io::SeekFrom, path::PathBuf};
 use async_trait::async_trait;
-use tokio::{fs::File, io::{AsyncBufReadExt, AsyncSeekExt, BufReader}};
+use std::{io::SeekFrom, path::PathBuf};
+use tokio::{
+    fs::File,
+    io::{AsyncBufReadExt, AsyncSeekExt, BufReader},
+};
 
 use crate::js::BatchedStreamProvider;
 
 #[derive(Clone)]
 pub struct JSONLinesStreamingBackend {
-    pub path: PathBuf
+    pub path: PathBuf,
 }
 
 const STREAMED_DATA_SIZE: usize = 65_536;
@@ -14,7 +17,7 @@ const STREAMED_DATA_SIZE: usize = 65_536;
 impl JSONLinesStreamingBackend {
     pub fn new(s: &str) -> Self {
         Self {
-            path: PathBuf::from(s)
+            path: PathBuf::from(s),
         }
     }
 }
@@ -34,13 +37,16 @@ impl BatchedStreamProvider<u64, String> for JSONLinesStreamingBackend {
         while s.len() < STREAMED_DATA_SIZE {
             let read = reader.read_line(&mut s).await?;
             if read == 0 {
-                break
+                break;
             } else {
-                *pos = *pos + (read as u64);
+                *pos += read as u64;
             }
         }
 
-        Ok(s.split('\n').map(|x| x.to_string()).collect::<Vec<String>>())
+        Ok(s.split('\n')
+            .filter(|x| !x.trim().is_empty())
+            .map(|x| x.to_string())
+            .collect::<Vec<String>>())
     }
 
     async fn more(&self, pos: &u64) -> anyhow::Result<bool> {
