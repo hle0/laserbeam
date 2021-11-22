@@ -1,20 +1,21 @@
-use deno_core::{JsRuntime, RuntimeOptions, futures::channel::oneshot, op_async};
+use deno_core::{JsRuntime, RuntimeOptions, op_async};
 use hmac::{Hmac, Mac, NewMac};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use async_trait::async_trait;
 use sha2::Sha256;
 use std::{marker::PhantomData, sync::Arc};
 use anyhow::anyhow;
-use tokio::task::{JoinHandle, LocalSet, spawn_local};
+use tokio::task::{JoinHandle, spawn_local};
+use tokio::sync::oneshot;
 
 use crate::ringbuffer::RingBuffer;
 
 #[async_trait]
 pub trait BatchedStreamProvider<I, T> where I: Serialize + DeserializeOwned + Clone, T: Serialize {
     /* the type I might represent an index in a file, etc. */
-    async fn begin(&self) -> I;
-    async fn next(&self, pos: &mut I) -> Vec<T>;
-    async fn more(&self, pos: &I) -> bool;
+    async fn begin(&self) -> anyhow::Result<I>;
+    async fn next(&self, pos: &mut I) -> anyhow::Result<Vec<T>>;
+    async fn more(&self, pos: &I) -> anyhow::Result<bool>;
 }
 
 type HmacSha256 = Hmac<Sha256>;
@@ -69,7 +70,7 @@ impl<I, T, B> DatabaseWrapper<I, T, B> where I: Serialize + DeserializeOwned + C
                 let mac = mac.clone();
                 async move {
                     let data = {
-                        let tmp = db.begin().await;
+                        let tmp = db.begin().await?;
                         serde_json::to_string(&tmp)?
                     };
             
@@ -91,7 +92,7 @@ impl<I, T, B> DatabaseWrapper<I, T, B> where I: Serialize + DeserializeOwned + C
             
                     let mut i: I = serde_json::from_str(s.data.as_str())?;
             
-                    let stuff = db.next(&mut i).await;
+                    let stuff = db.next(&mut i).await?;
                     
                     Ok((Secured::new(mac.clone(), serde_json::to_string(&i)?), stuff))
                 }
@@ -111,7 +112,7 @@ impl<I, T, B> DatabaseWrapper<I, T, B> where I: Serialize + DeserializeOwned + C
             
                     let i: I = serde_json::from_str(s.data.as_str())?;
             
-                    Ok(db.more(&i).await)
+                    db.more(&i).await
                 }
             }));
         }
@@ -141,24 +142,22 @@ impl<I, T, B> DatabaseWrapper<I, T, B> where I: Serialize + DeserializeOwned + C
         })
     }
 
-    pub async fn run_query(mut self, query: &str) -> anyhow::Result<()> {
-        self.runtime.execute_script("[query]", query)?;
-        self.runtime.run_event_loop(false).await?;
-        self.results.close().await;
-
-        Ok(())
-    }
-
     pub async fn spawn(db: Arc<B>, script: oneshot::Receiver<String>) -> anyhow::Result<(JoinHandle<anyhow::Result<()>>, Arc<ResultsBuffer>)> {
         let (send, recv) = oneshot::channel();
-        let local = LocalSet::new();
-        local.run_until(async {
-            Ok((spawn_local(async move {
-                let wrapper = Self::new(db)?;
-                send.send(wrapper.results.clone()).map_err(|_| anyhow!("could not send value"))?;
-                wrapper.run_query(script.await?.as_str()).await?;
-                Ok(())
-            }), recv.await?))
-        }).await
+        Ok((spawn_local(async move {
+            let wrapper = Self::new(db)?;
+
+            let mut runtime = wrapper.runtime;
+            let results = wrapper.results;
+
+            send.send(results.clone()).map_err(|_| anyhow!("could not send value"))?;
+            
+            let query = script.await?;
+            runtime.execute_script("[query]", query.as_str())?;
+            runtime.run_event_loop(false).await?;
+            results.close().await;
+
+            Ok(())
+        }), recv.await?))
     }
 }

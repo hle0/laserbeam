@@ -2,7 +2,7 @@ async function *database() {
     let i = await Deno.core.opAsync("database.begin");
     while (await Deno.core.opAsync("database.more", i)) {
         [i, batch] = await Deno.core.opAsync("database.next", i);
-        yield *batch;
+        yield *(batch.map(x => JSON.parse(x)));
     }
 }
 

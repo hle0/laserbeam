@@ -1,14 +1,19 @@
-use rocket::{get, launch, routes};
+#![feature(try_blocks)]
+
+use database::JSONLinesStreamingBackend;
+use rocket::{State, routes};
 
 mod js;
 mod ringbuffer;
+mod database;
+mod app;
 
-#[get("/")]
-fn index() -> &'static str {
-    "test"
-}
-
-#[launch]
-fn rocket() -> _ {
-    rocket::build().mount("/", routes![index])
+#[tokio::main]
+async fn main() {
+    app::query("a".to_string(), &State::from(&JSONLinesStreamingBackend::new("a"))).await;
+    rocket::build()
+        .manage(app::DatabaseBackend::new("test.jsonl"))
+        //.mount("/", routes![app::query])
+        .launch()
+        .await.unwrap();
 }
