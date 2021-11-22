@@ -1,5 +1,8 @@
 use rocket::{get, launch, routes};
 
+mod js;
+mod ringbuffer;
+
 #[get("/")]
 fn index() -> &'static str {
     "test"
