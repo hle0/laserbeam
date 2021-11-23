@@ -1,12 +1,36 @@
 use std::sync::Arc;
 
+use serde::Deserialize;
+
 use crate::database::Database;
 
 pub type Value = serde_json::Value;
 
+/// Execution limits placed on scripts running in the runtime.
+/// 
+/// Not all runtimes support all of these limits - some may support only one, or some may support none of them.
+#[derive(Clone, Copy, Default, Deserialize)]
+pub struct Limits {
+    /// The size, in bytes, allowed for heap allocations.
+    /// 
+    /// The runtime may allocate very slightly more than this for book-keeping purposes, etc.
+    pub heap: Option<usize>,
+
+    /// The maximum amount of time the script is allowed to run before it is forcefully killed, in seconds.
+    /// 
+    /// This may or may not include the time needed for the runtime to spin up, so calls to [`QueryRuntime::execute`]
+    /// may take slightly longer than this time.
+    pub time: Option<f64>
+}
+
 /// A runtime for executing a query.
 /// This is/was only [`crate::js::JSQueryRuntime`], but theoretically other runtimes could be used that support different languages.
 pub trait QueryRuntime {
+    /// Attempt to set the execution limits for each script in the runtime.
+    /// 
+    /// Since not all limits are supported by all runtimes, this function returns what the limits were actually set to.
+    fn set_limits(&mut self, limits: &Limits) -> &Limits;
+
     /// Execute a query using the given database.
     ///
     /// For some runtimes, this may create the entire execution context, use it, and then drop it after the returned iterator ends;

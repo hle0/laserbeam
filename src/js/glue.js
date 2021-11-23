@@ -61,7 +61,7 @@ function _genWrapper(gen) {
             return Array.from(this);
         },
         forEach: function(f) {
-            return this.map(f).map(_ => undefined).collect();
+            return this.map(f).map(_ => undefined).fold((_, _) => undefined);
         },
         sendAll: function() {
             return this.forEach(sendOne);

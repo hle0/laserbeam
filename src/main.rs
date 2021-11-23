@@ -3,25 +3,31 @@
 use std::sync::Arc;
 
 use database::JSONLinesDatabase;
-use rocket::{post, routes, State};
+use rocket::{State, fairing::AdHoc, post, routes};
 use runtime::QueryRuntime;
+
+use crate::config::Config;
 
 mod database;
 mod js;
 mod runtime;
+mod config;
 
 /// The main query endpoint.
 /// Currently, this just runs a script supplied via POST data in the [`js::JSQueryRuntime`].
 #[post("/query", data = "<script>")]
-async fn query(script: String, db: &State<Arc<JSONLinesDatabase>>) -> String {
+async fn query(script: String, db: &State<Arc<JSONLinesDatabase>>, config: &State<Config>) -> String {
     let db = db.inner().clone();
+    let config = config.inner().clone();
 
     let result: Result<String, anyhow::Error> = tokio::task::spawn_blocking(move || {
         let mut values = Vec::new();
 
         let db = db.clone();
 
-        for value in js::JSQueryRuntime::new().execute(script, db) {
+        let mut runtime = js::JSQueryRuntime::new();
+        runtime.set_limits(&config.app.runtime_limits);
+        for value in runtime.execute(script, db) {
             values.push(value?);
         }
 
@@ -38,15 +44,12 @@ async fn query(script: String, db: &State<Arc<JSONLinesDatabase>>) -> String {
 
 #[tokio::main]
 async fn main() {
-    let mut args = std::env::args();
-    args.next().unwrap();
-    let file = match args.next() {
-        Some(x) => x,
-        None => "./db.jsonl".to_string(),
-    };
+    let build = rocket::build()
+        .attach(AdHoc::config::<Config>());
+    
+    let config: Config = build.figment().extract().expect("config");
 
-    rocket::build()
-        .manage(Arc::new(JSONLinesDatabase::new(file)))
+    build.manage(Arc::new(JSONLinesDatabase::new(config.app.database)))
         .mount("/", routes![query])
         .launch()
         .await
