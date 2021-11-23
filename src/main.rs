@@ -10,6 +10,8 @@ mod database;
 mod js;
 mod runtime;
 
+/// The main query endpoint.
+/// Currently, this just runs a script supplied via POST data in the [`js::JSQueryRuntime`].
 #[post("/query", data = "<script>")]
 async fn query(script: String, db: &State<Arc<JSONLinesDatabase>>) -> String {
     let db = db.inner().clone();
@@ -44,7 +46,7 @@ async fn main() {
     };
 
     rocket::build()
-        .manage(Arc::new(JSONLinesDatabase { path: file }))
+        .manage(Arc::new(JSONLinesDatabase::new(file)))
         .mount("/", routes![query])
         .launch()
         .await

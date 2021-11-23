@@ -7,10 +7,16 @@ use deno_core::op_sync;
 
 use crate::runtime::{QueryRuntime, Value};
 
+/// A [`QueryRuntime`] for JavaScript using Deno/V8.
+/// `glue.js` is run before every query.
+/// A new runtime/engine is created for every request.
 pub struct JSQueryRuntime {}
 
 impl JSQueryRuntime {
-    pub fn new() -> Self {
+    /// Create a new [`JSQueryRuntime`].
+    /// This doesn't actually do much - everything is created in [`QueryRuntime::execute`],
+    /// since the JavaScript runtime itself is not [`Send`].
+    pub const fn new() -> Self {
         Self {}
     }
 }
