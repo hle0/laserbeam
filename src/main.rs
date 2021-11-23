@@ -4,10 +4,7 @@ use std::sync::Arc;
 
 use rocket::routes;
 
-mod app;
-mod database;
 mod js;
-mod ringbuffer;
 
 #[tokio::main]
 async fn main() {
