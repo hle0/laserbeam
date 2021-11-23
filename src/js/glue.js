@@ -1,17 +1,72 @@
-async function *database() {
-    let i = await Deno.core.opAsync("database.begin");
-    while (await Deno.core.opAsync("database.more", i)) {
-        [i, batch] = await Deno.core.opAsync("database.next", i);
-        yield *(batch.map(x => JSON.parse(x)));
+function *_database(table) {
+    let i = Deno.core.opSync("database.begin", table);
+    while (1) {
+        let v = Deno.core.opSync("database.next", i);
+        if (v) {
+            yield v;
+        } else {
+            break;
+        }
     }
 }
 
-async function send_one(item) {
-    await Deno.core.opAsync("database.send", [item]);
+function sendOne(item) {
+    Deno.core.opSync("database.send", [item]);
 }
 
-async function send(stuff) {
-    for await (let item of stuff) {
-        await send_one(item);
+function send(stuff) {
+    for (let item of stuff) {
+        sendOne(item);
     }
 }
+
+function _genWrapper(gen) {
+    return Object.assign(gen, {
+        map: function (f) {
+            let prev = this;
+            return _genWrapper(function *() {
+                for (let item of prev) {
+                    yield f(item);
+                }
+            }());
+        },
+        filter: function (f) {
+            let prev = this;
+            return _genWrapper(function *() {
+                for (let item of prev) {
+                    if (f(item)) {
+                        yield item;
+                    }
+                }
+            }());
+        },
+        fold: function (f, initial) {
+            let result = initial;
+            for (let item of this) {
+                result = f(initial, result);
+            }
+            return result;
+        },
+        enumerate: function () {
+            let prev = this;
+            return _genWrapper(function *() {
+                let i = 0;
+                for (let item of prev) {
+                    yield [i, item];
+                    i++;
+                }
+            }());
+        },
+        collect: function() {
+            return Array.from(this);
+        },
+        forEach: function(f) {
+            return this.map(f).map(_ => undefined).collect();
+        },
+        sendAll: function() {
+            return this.forEach(sendOne);
+        }
+    });
+}
+
+const database = (which) => _genWrapper(_database(which));
